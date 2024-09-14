@@ -1,9 +1,10 @@
 #include "main.h"
 #include "ACMMP.h"
 
-void GenerateSampleList(const std::string &dense_folder, std::vector<Problem> &problems)
+void GenerateSampleList(const std::string &cam_folder, std::vector<Problem> &problems)
 {
-    std::string cluster_list_path = dense_folder + std::string("/pair.txt");
+    std::string cluster_list_path = cam_folder + std::string("/pair.txt");
+    std::cout << "Reading cluster list from " << cluster_list_path << std::endl;
 
     problems.clear();
 
@@ -32,12 +33,11 @@ void GenerateSampleList(const std::string &dense_folder, std::vector<Problem> &p
     }
 }
 
-int ComputeMultiScaleSettings(const std::string &dense_folder, std::vector<Problem> &problems)
+int ComputeMultiScaleSettings(const std::string &image_folder, std::vector<Problem> &problems)
 {
     int max_num_downscale = -1;
     int size_bound = 1000;
     PatchMatchParams pmp;
-    std::string image_folder = dense_folder + std::string("/images");
 
     size_t num_images = problems.size();
 
@@ -70,13 +70,13 @@ int ComputeMultiScaleSettings(const std::string &dense_folder, std::vector<Probl
     return max_num_downscale;
 }
 
-void ProcessProblem(const std::string &dense_folder, const std::vector<Problem> &problems, const int idx, bool geom_consistency, bool planar_prior, bool hierarchy, bool multi_geometrty=false)
+void ProcessProblem(const std::string &image_folder, const std::string cam_folder, const std::string &dense_folder, const std::vector<Problem> &problems, const int idx, bool geom_consistency, bool planar_prior, bool hierarchy, bool multi_geometrty=false)
 {
     const Problem problem = problems[idx];
     std::cout << "Processing image " << std::setw(8) << std::setfill('0') << problem.ref_image_id << "..." << std::endl;
     cudaSetDevice(0);
     std::stringstream result_path;
-    result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+    result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
     std::string result_folder = result_path.str();
     mkdir(result_folder.c_str(), 0777);
 
@@ -88,7 +88,7 @@ void ProcessProblem(const std::string &dense_folder, const std::vector<Problem> 
         acmmp.SetHierarchyParams();
     }
 
-    acmmp.InuputInitialization(dense_folder, problems, idx);
+    acmmp.InuputInitialization(image_folder, cam_folder, dense_folder, problems, idx);
 
     acmmp.CudaSpaceInitialization(dense_folder, problem);
     acmmp.RunPatchMatch();
@@ -209,16 +209,15 @@ void ProcessProblem(const std::string &dense_folder, const std::vector<Problem> 
     std::cout << "Processing image " << std::setw(8) << std::setfill('0') << problem.ref_image_id << " done!" << std::endl;
 }
 
-void JointBilateralUpsampling(const std::string &dense_folder, const Problem &problem, int acmmp_size)
+void JointBilateralUpsampling(const std::string &image_folder, const std::string &dense_folder, const Problem &problem, int acmmp_size)
 {
     std::stringstream result_path;
-    result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+    result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
     std::string result_folder = result_path.str();
     std::string depth_path = result_folder + "/depths_geom.dmb";
     cv::Mat_<float> ref_depth;
     readDepthDmb(depth_path, ref_depth);
 
-    std::string image_folder = dense_folder + std::string("/images");
     std::stringstream image_path;
     image_path << image_folder << "/" << std::setw(8) << std::setfill('0') << problem.ref_image_id << ".jpg";
     cv::Mat_<uint8_t> image_uint = cv::imread(image_path.str(), cv::IMREAD_GRAYSCALE);
@@ -237,11 +236,9 @@ void JointBilateralUpsampling(const std::string &dense_folder, const Problem &pr
     RunJBU(scaled_image_float, ref_depth, dense_folder, problem );
 }
 
-void RunFusion(std::string &dense_folder, const std::vector<Problem> &problems, bool geom_consistency)
+void RunFusion(std::string &image_folder, std::string &cam_folder, std::string &dense_folder, const std::vector<Problem> &problems, bool geom_consistency)
 {
     size_t num_images = problems.size();
-    std::string image_folder = dense_folder + std::string("/images");
-    std::string cam_folder = dense_folder + std::string("/cams");
 
     std::vector<cv::Mat> images;
     std::vector<Camera> cameras;
@@ -267,7 +264,7 @@ void RunFusion(std::string &dense_folder, const std::vector<Problem> &problems, 
         Camera camera = ReadCamera(cam_path.str());
 
         std::stringstream result_path;
-        result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problems[i].ref_image_id;
+        result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problems[i].ref_image_id;
         std::string result_folder = result_path.str();
         std::string suffix = "/depths.dmb";
         if (geom_consistency) {
@@ -385,28 +382,37 @@ void RunFusion(std::string &dense_folder, const std::vector<Problem> &problems, 
         }
     }
 
-    std::string ply_path = dense_folder + "/ACMMP/ACMMP_model.ply";
+    std::string ply_path = dense_folder + "/ACMMP_model.ply";
     StoreColorPlyFileBinaryPointCloud (ply_path, PointCloud);
 }
 
 int main(int argc, char** argv)
 {
-    if (argc < 2) {
-        std::cout << "USAGE: ACMMP dense_folder" << std::endl;
+    if (argc < 4) {
+        std::cout << "USAGE: ACMMP images workspace" << std::endl;
         return -1;
     }
 
-    std::string dense_folder = argv[1];
-    std::vector<Problem> problems;
-    GenerateSampleList(dense_folder, problems);
+    std::string image_folder = argv[1];
+    std::string cam_folder = argv[2];
+    std::string dense_folder = argv[3];
 
-    std::string output_folder = dense_folder + std::string("/ACMMP");
+    std::stringstream tmp_path;
+    tmp_path << dense_folder << "/tmp";
+    std::string tmp_folder = tmp_path.str();
+    std::cout << tmp_folder << std::endl;
+    mkdir(tmp_folder.c_str(), 0777);
+
+    std::vector<Problem> problems;
+    GenerateSampleList(cam_folder, problems);
+
+    std::string output_folder = dense_folder;
     mkdir(output_folder.c_str(), 0777);
 
     size_t num_images = problems.size();
     std::cout << "There are " << num_images << " problems needed to be processed!" << std::endl;
 
-    int max_num_downscale = ComputeMultiScaleSettings(dense_folder, problems);
+    int max_num_downscale = ComputeMultiScaleSettings(image_folder, problems);
 
      int flag = 0;
      int geom_iterations = 2;
@@ -429,7 +435,7 @@ int main(int argc, char** argv)
             geom_consistency = false;
             planar_prior = true;
             for (size_t i = 0; i < num_images; ++i) {
-                ProcessProblem(dense_folder, problems, i, geom_consistency, planar_prior, hierarchy);
+                ProcessProblem(image_folder, cam_folder, dense_folder, problems, i, geom_consistency, planar_prior, hierarchy);
             }
             geom_consistency = true;
             planar_prior = false;
@@ -441,20 +447,20 @@ int main(int argc, char** argv)
                     multi_geometry = true;
                 }
                 for (size_t i = 0; i < num_images; ++i) {
-                    ProcessProblem(dense_folder,  problems, i, geom_consistency, planar_prior, hierarchy, multi_geometry);
+                    ProcessProblem(image_folder, cam_folder, dense_folder, problems, i, geom_consistency, planar_prior, hierarchy, multi_geometry);
                 }
             }
         }
         else {
             for (size_t i = 0; i < num_images; ++i) {
-               JointBilateralUpsampling(dense_folder, problems[i], problems[i].cur_image_size);
+               JointBilateralUpsampling(image_folder, dense_folder, problems[i], problems[i].cur_image_size);
              }
 
             hierarchy = true;
             geom_consistency = false;
             planar_prior = true;
             for (size_t i = 0; i < num_images; ++i) {
-                ProcessProblem(dense_folder,  problems, i, geom_consistency, planar_prior, hierarchy);
+                ProcessProblem(image_folder, cam_folder, dense_folder, problems, i, geom_consistency, planar_prior, hierarchy);
             }
             hierarchy = false;
             geom_consistency = true;
@@ -467,7 +473,7 @@ int main(int argc, char** argv)
                     multi_geometry = true;
                 }
                 for (size_t i = 0; i < num_images; ++i) {
-                    ProcessProblem(dense_folder,  problems, i, geom_consistency, planar_prior, hierarchy, multi_geometry);
+                    ProcessProblem(image_folder, cam_folder, dense_folder,  problems, i, geom_consistency, planar_prior, hierarchy, multi_geometry);
                 }
             }
         }
@@ -476,7 +482,7 @@ int main(int argc, char** argv)
     }
 
     geom_consistency = true;
-    RunFusion(dense_folder, problems, geom_consistency);
+    RunFusion(image_folder, cam_folder, dense_folder, problems, geom_consistency);
 
     return 0;
 }

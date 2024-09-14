@@ -57,7 +57,7 @@ public:
     ACMMP();
     ~ACMMP();
 
-    void InuputInitialization(const std::string &dense_folder, const std::vector<Problem> &problem, const int idx);
+    void InuputInitialization(const std::string &image_folder, const std::string &cam_folder, const std::string &dense_folder, const std::vector<Problem> &problem, const int idx);
     void Colmap2MVS(const std::string &dense_folder, std::vector<Problem> &problems);
     void CudaSpaceInitialization(const std::string &dense_folder, const Problem &problem);
     void RunPatchMatch();

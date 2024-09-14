@@ -454,14 +454,11 @@ void ACMMP::SetPlanarPriorParams()
     params.planar_prior = true;
 }
 
-void ACMMP::InuputInitialization(const std::string &dense_folder, const std::vector<Problem> &problems, const int idx)
+void ACMMP::InuputInitialization(const std::string &image_folder, const std::string &cam_folder, const std::string &dense_folder, const std::vector<Problem> &problems, const int idx)
 {
     images.clear();
     cameras.clear();
     const Problem problem = problems[idx];
-
-    std::string image_folder = dense_folder + std::string("/images");
-    std::string cam_folder = dense_folder + std::string("/cams");
 
     std::stringstream image_path;
     image_path << image_folder << "/" << std::setw(8) << std::setfill('0') << problem.ref_image_id << ".jpg";
@@ -514,6 +511,7 @@ void ACMMP::InuputInitialization(const std::string &dense_folder, const std::vec
         const float scale_y = new_rows / static_cast<float>(images[i].rows);
 
         cv::Mat_<float> scaled_image_float;
+        
         cv::resize(images[i], scaled_image_float, cv::Size(new_cols,new_rows), 0, 0, cv::INTER_LINEAR);
         images[i] = scaled_image_float.clone();
 
@@ -537,7 +535,7 @@ void ACMMP::InuputInitialization(const std::string &dense_folder, const std::vec
         depths.clear();
 
         std::stringstream result_path;
-        result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+        result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
         std::string result_folder = result_path.str();
         std::string suffix = "/depths.dmb";
         if (params.multi_geometry) {
@@ -551,7 +549,7 @@ void ACMMP::InuputInitialization(const std::string &dense_folder, const std::vec
         size_t num_src_images = problem.src_image_ids.size();
         for (size_t i = 0; i < num_src_images; ++i) {
             std::stringstream result_path;
-            result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.src_image_ids[i];
+            result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.src_image_ids[i];
             std::string result_folder = result_path.str();
             std::string depth_path = result_folder + suffix;
             cv::Mat_<float> depth;
@@ -634,7 +632,7 @@ void ACMMP::CudaSpaceInitialization(const std::string &dense_folder, const Probl
         cudaMemcpy(texture_depths_cuda, &texture_depths_host, sizeof(cudaTextureObjects), cudaMemcpyHostToDevice);
 
         std::stringstream result_path;
-        result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+        result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
         std::string result_folder = result_path.str();
         std::string suffix = "/depths.dmb";
         if (params.multi_geometry) {
@@ -670,7 +668,7 @@ void ACMMP::CudaSpaceInitialization(const std::string &dense_folder, const Probl
 
     if (params.hierarchy) {
         std::stringstream result_path;
-        result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+        result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
         std::string result_folder = result_path.str();
         std::string depth_path = result_folder + "/depths.dmb";
         std::string normal_path = result_folder + "/normals.dmb";
@@ -974,7 +972,7 @@ void RunJBU(const cv::Mat_<float>  &scaled_image_float, const cv::Mat_<float> &s
 
     cv::Mat_<float> disp0 = depthmap.clone();
     std::stringstream result_path;
-    result_path << dense_folder << "/ACMMP" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
+    result_path << dense_folder << "/tmp" << "/2333_" << std::setw(8) << std::setfill('0') << problem.ref_image_id;
     std::string result_folder = result_path.str();
     mkdir(result_folder.c_str(), 0777);
     std::string depth_path = result_folder + "/depths.dmb";
